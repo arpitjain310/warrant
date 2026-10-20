@@ -34,22 +34,29 @@ the authorization server; this side only verifies.
 ```
 client ── POST /mcp + Bearer ──▶ JwtVerifier ──▶ scope gate ──▶ tool ──▶ NoteStore
   ▲                              JWKS, iss,      tool → scope   owner =    SQLite
-  │                              aud, exp                       token.sub
-  └── 401 + resource_metadata ◀── missing / invalid token
-      (client discovers the authorization server and logs the user in)
+  │                              aud, exp             │         token.sub
+  ├── 401 + resource_metadata ◀── missing / invalid   │
+  │   (discover the authorization server, log in)     │
+  └── 403 insufficient_scope ◀────────────────────────┘
+      (re-authorize with the added scope, retry)
 ```
 
 - **Discovery** — an unauthenticated request gets `401` with
   `WWW-Authenticate: Bearer resource_metadata=...`. The protected resource
-  metadata (RFC 9728) names the authorization server and every tool scope, so a
-  client can run the login without per-server configuration.
+  metadata (RFC 9728) names the authorization server and the baseline scope,
+  `notes:read`, so a client can log in without per-server configuration.
+- **Step-up** — a call the token lacks scope for gets `403` with
+  `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."`, listing
+  everything that operation needs. The client re-authorizes and retries, so
+  write access is granted when first used, not at login.
 - **JwtVerifier** (`auth.py`) — validates JWT access tokens (RFC 9068) against
   the issuer's JWKS: signature, `iss`, `aud`, `exp`, `sub`. RS256 only. An
   unknown key ID triggers one JWKS refetch (key rotation), with a cooldown so
   forged key IDs can't make it hammer the issuer.
-- **Scope gate** (`server.py`) — each tool is registered with the scope it
-  needs, and the gate checks it before the tool runs. It fails closed: a tool
-  registered without a scope can't be called.
+- **Scope gate** (`server.py`) — `TOOL_SCOPES` maps each tool to its scope.
+  The HTTP gate reads the tool from the 2026-07-28 `Mcp-Name` header, which the
+  SDK rejects if it disagrees with the body. A handler-tier check repeats it for
+  requests without the header, and fails closed on a tool missing from the map.
 - **NoteStore** (`store.py`) — SQLite. Every method takes the owner.
 
 ## Tools
@@ -59,6 +66,8 @@ client ── POST /mcp + Bearer ──▶ JwtVerifier ──▶ scope gate ─�
 | `search_notes(query, limit)` | `notes:read` | Case-insensitive substring; empty query lists the most recent. |
 | `get_note(note_id)` | `notes:read` | Another user's note reads as not found. |
 | `create_note(title, body)` | `notes:write` | |
+
+Every request also needs `notes:read`.
 
 ## Explicit non-goals
 
@@ -72,7 +81,7 @@ client ── POST /mcp + Bearer ──▶ JwtVerifier ──▶ scope gate ─�
 Built on the official Python SDK (`mcp` 2.x) at MCP revision 2026-07-28:
 stateless, no sessions, each request carries its own protocol version. The SDK
 handles transport and the `401`. Token verification, per-tool scopes, the
-metadata's scope list and per-user data scoping are here.
+`403` step-up challenge and per-user data scoping are here.
 
 ## Quickstart
 

@@ -118,14 +118,15 @@ async def app(verifier):
 
 
 @asynccontextmanager
-async def open_client(app, token: str):
+async def open_client(app, token: str, mode: str = "auto"):
     """MCP client to an in-process app, authenticated with `token`."""
     http = httpx2.AsyncClient(
         transport=httpx2.ASGITransport(app=app),
         base_url="http://testserver",
         headers={"Authorization": f"Bearer {token}"},
     )
-    async with http, Client(streamable_http_client(RESOURCE, http_client=http)) as client:
+    transport = streamable_http_client(RESOURCE, http_client=http)
+    async with http, Client(transport, mode=mode) as client:
         yield client
 
 
