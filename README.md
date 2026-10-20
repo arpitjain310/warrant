@@ -89,11 +89,25 @@ handles transport and the `401`. Token verification, per-tool scopes, the
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 pytest -q
+warrant --dev
 ```
 
-Run it against an identity provider. The API (audience) identifier is the
-server's public `/mcp` URL, with `notes:read` and `notes:write` defined as its
-scopes:
+`--dev` needs no identity provider. It runs a local issuer (signs tokens and
+serves its keys; not an authorization server) and prints a read token and a
+read+write token for user `dev`. Pass one as a bearer header from any MCP
+client, e.g. Claude Code:
+
+```bash
+claude mcp add --transport http warrant http://127.0.0.1:8000/mcp --header "Authorization: Bearer <token>"
+```
+
+With the read token, `create_note` gets the `403` step-up challenge. A static
+header can't re-authorize, so the call stops there.
+
+### Against an identity provider
+
+The API (audience) identifier is the server's public `/mcp` URL, with
+`notes:read` and `notes:write` defined as its scopes:
 
 ```bash
 warrant --issuer https://YOUR_TENANT/ --resource-url http://localhost:8000/mcp

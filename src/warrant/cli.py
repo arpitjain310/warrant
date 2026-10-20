@@ -8,7 +8,8 @@ import os
 import uvicorn
 
 from warrant.auth import JwtVerifier, discover_jwks_url
-from warrant.server import build_app
+from warrant.dev import DevIssuer
+from warrant.server import READ, WRITE, build_app
 from warrant.store import NoteStore
 
 
@@ -28,23 +29,35 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--db", default=env("WARRANT_DB", "warrant.db"))
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
+    p.add_argument(
+        "--dev",
+        action="store_true",
+        help="no identity provider: run a local issuer and print tokens",
+    )
     args = p.parse_args(argv)
 
-    if not args.issuer or not args.resource_url:
+    if args.dev:
+        resource_url = args.resource_url or f"http://{args.host}:{args.port}/mcp"
+        dev = DevIssuer(audience=resource_url)
+        issuer, audience, jwks_url = dev.issuer, resource_url, dev.jwks_url
+        print(f"dev issuer {issuer} (tokens valid 1h, user 'dev')")
+        print(f"  read:       {dev.mint(scopes=(READ,))}")
+        print(f"  read+write: {dev.mint(scopes=(READ, WRITE))}", flush=True)
+    elif args.issuer and args.resource_url:
+        resource_url, issuer = args.resource_url, args.issuer
+        audience = args.audience or resource_url
+        jwks_url = args.jwks_url or discover_jwks_url(issuer)
+    else:
         p.error(
-            "--issuer and --resource-url are required (or WARRANT_ISSUER / WARRANT_RESOURCE_URL)"
+            "--issuer and --resource-url are required (or WARRANT_ISSUER / WARRANT_RESOURCE_URL),"
+            " or use --dev"
         )
 
-    verifier = JwtVerifier(
-        issuer=args.issuer,
-        audience=args.audience or args.resource_url,
-        jwks_url=args.jwks_url or discover_jwks_url(args.issuer),
-    )
     app = build_app(
         NoteStore(args.db),
-        verifier,
-        issuer=args.issuer,
-        resource_url=args.resource_url,
+        JwtVerifier(issuer=issuer, audience=audience, jwks_url=jwks_url),
+        issuer=issuer,
+        resource_url=resource_url,
         host=args.host,
     )
     uvicorn.run(app, host=args.host, port=args.port)

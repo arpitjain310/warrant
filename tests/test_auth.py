@@ -4,8 +4,9 @@ import jwt
 import pytest
 
 from warrant.auth import JwtVerifier
+from warrant.dev import new_key
 
-from .conftest import ISSUER, RESOURCE, new_key
+from .conftest import ISSUER, RESOURCE
 
 pytestmark = pytest.mark.anyio
 
@@ -15,7 +16,7 @@ async def test_valid_token_maps_subject_scopes_and_client(issuer, verifier):
     access = await verifier.verify_token(token)
     assert access.subject == "alice"
     assert access.scopes == ["notes:read", "notes:write"]
-    assert access.client_id == "test-client"
+    assert access.client_id == "dev-client"
     assert access.resource == RESOURCE
 
 
@@ -25,7 +26,7 @@ async def test_rejects_token_for_another_audience(issuer, verifier):
 
 
 async def test_accepts_audience_list_containing_this_server(issuer, verifier):
-    token = issuer.mint(aud=[RESOURCE, ISSUER + "userinfo"])
+    token = issuer.mint("alice", aud=[RESOURCE, ISSUER + "userinfo"])
     assert (await verifier.verify_token(token)).subject == "alice"
 
 
