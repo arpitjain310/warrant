@@ -83,6 +83,10 @@ stateless, no sessions, each request carries its own protocol version. The SDK
 handles transport and the `401`. Token verification, per-tool scopes, the
 `403` step-up challenge and per-user data scoping are here.
 
+`tests/test_oauth_flow.py` runs the SDK's own OAuth client against the server
+and a stub authorization server: discovery, a `notes:read` login, a `403` on
+`create_note`, re-authorization for `notes:read notes:write`, and the retry.
+
 ## Quickstart
 
 ```bash
